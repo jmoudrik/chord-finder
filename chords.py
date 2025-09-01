@@ -4,6 +4,7 @@ import math
 import functools
 import warnings
 from itertools import islice, groupby, takewhile
+import argparse
 
 """
 	Data-structures:
@@ -231,6 +232,7 @@ def ChordEvaluator():
 	return EVALUATOR
 
 
+@functools.total_ordering
 class ChordNGrip:
 	def __init__(self, chord, grip, instrument, num_fingers, evalfc):
 		self.chord = chord
@@ -263,11 +265,17 @@ class ChordNGrip:
 		# fitness
 		self.fitvals = evalfc(self)
 		self.fitness = sum(self.fitvals)
-	def __cmp__(self, other):
-		if isinstance(other, ChordNGrip):
-			return cmp(self.fitness, other.fitness)
-		else:
-			return cmp(id(self), id(other))
+
+	def __eq__(self, other):
+		if not isinstance(other, ChordNGrip):
+			return NotImplemented
+		return self.fitness == other.fitness
+
+	def __lt__(self, other):
+		if not isinstance(other, ChordNGrip):
+			return NotImplemented
+		return self.fitness < other.fitness
+
 	def __hash__(self):
 		return hash((self.chord, self.grip))
 	def filter_frets(self, filterset):
@@ -364,8 +372,8 @@ class ChordGenerator:
 			str1, fr1 = x
 			str2, fr2 = y
 			if fr1 != fr2:
-				return cmp(fr1,fr2)
-			return - cmp(str1,str2)
+				return (fr1 > fr2) - (fr1 < fr2)
+			return - ((str1 > str2) - (str1 < str2))
 		def myprint(depth, *arg):
 			pass
 			#print ' '.join(["|"*depth] + arg)
@@ -551,7 +559,7 @@ def main():
 	i = Instrument(('E','H','G','D','A','E'),t,8)
 
     # Ukulele
-	#i = Instrument(('A','E','C','G'),t,8)
+	i = Instrument(('A','E','C','G'),t,8)
     # Balalajka
 	#i = Instrument(('G','E','E'),t,8)
 	c = ChordGenerator(i)
