@@ -319,7 +319,14 @@ class Instrument:
 		'''
 		self.ts = tone_system
 		self.string_names = strings
-		self.strings = tuple(map(tone_system.label_to_tone, strings))
+		tones = []
+		for s in strings:
+			try:
+				tones.append(self.ts.label_to_tone(s))
+			except Exception:
+				allowed_tones = ", ".join(sorted(self.ts.l2t.keys()))
+				raise ValueError(f"Unknown tone '{s}' in tuning. Allowed base tones are: {allowed_tones}")
+		self.strings = tuple(tones)
 		self.num_frets = num_frets
 	def get_fretboard(self):
 		return [ set((fr,(zerofret + fr) % self.ts.scalesize) for fr in range(self.num_frets + 1)) for zerofret in self.strings]
@@ -550,15 +557,23 @@ def main():
     instrument_group.add_argument('-u', '--ukulele', action='store_const', dest='instrument', const='AECG',
                                   help='use ukulele tuning')
     instrument_group.add_argument('-i', '--instrument', type=str,
-                                  help='use custom instrument tuning, bottom-most string first - e.g. EHGDAE is guitar')
-    parser.set_defaults(instrument='EHGDAE')
+                                  help='use custom instrument tuning, bottom-most string first - e.g. EBGDAE is guitar')
+
+    lang_group = parser.add_mutually_exclusive_group()
+    lang_group.add_argument('--en', action='store_const', dest='lang', const='en', help='Use English tone names (default)')
+    lang_group.add_argument('--cz', action='store_const', dest='lang', const='cz', help='Use Czech tone names')
+
+    parser.set_defaults(instrument='EBGDAE', lang='en')
     args = parser.parse_args()
 
-    # cz
-    #base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',10),('H',11)]
-    base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('H',11)]
-    # en
-    #base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',11)]
+    if args.lang == 'cz':
+        # cz
+        base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('H',11)]
+        if args.instrument == 'EBGDAE':
+            args.instrument = 'EHGDAE'
+    else:
+        # en
+        base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',11)]
 
     tone_modificators = [('#',1), ('b',-1), ('is',1), ('es', -1)]
     chord_masks = [([''],(0,4,7)),(['mi','m'],(0,3,7)),(['5+','+','aug'],(0,4,8)),('sus4',(0,5,7)),(['6','sus6','add6'],(0,4,7,9)),
@@ -570,8 +585,8 @@ def main():
     instrument_tuning = tuple(args.instrument.upper())
     try:
         i = Instrument(instrument_tuning, t, 8)
-    except Exception as e:
-        print(f"Error: Invalid instrument tuning '{args.instrument}'. Unknown tone in tuning.")
+    except ValueError as e:
+        print(f"Error: {e}")
         return
 
     c = ChordGenerator(i)
