@@ -545,13 +545,13 @@ def main():
     parser.add_argument('-n', '--number', type=int, default=3,
                         help='number of chords to show')
     instrument_group = parser.add_mutually_exclusive_group()
-    instrument_group.add_argument('-g', '--guitar', action='store_const', dest='instrument', const='EAHGHE',
+    instrument_group.add_argument('-g', '--guitar', action='store_const', dest='instrument', const='EHGDAE',
                                   help='use guitar tuning (default)')
-    instrument_group.add_argument('-u', '--ukulele', action='store_const', dest='instrument', const='GCEA',
+    instrument_group.add_argument('-u', '--ukulele', action='store_const', dest='instrument', const='AECG',
                                   help='use ukulele tuning')
     instrument_group.add_argument('-i', '--instrument', type=str,
                                   help='use custom instrument tuning (e.g., DADGAD)')
-    parser.set_defaults(instrument='EADGHE')
+    parser.set_defaults(instrument='EHGDAE')
     args = parser.parse_args()
 
     # cz
