@@ -541,16 +541,16 @@ class ChordGenerator:
 def main():
     parser = argparse.ArgumentParser(description='Find guitar chords.')
     parser.add_argument('chords', metavar='CHORD', type=str, nargs='+',
-                        help='a chord to find')
+                        help='a chord to find, e.g. C, C#m, Cmi, Cmi7, etc.')
     parser.add_argument('-n', '--number', type=int, default=3,
                         help='number of chords to show')
     instrument_group = parser.add_mutually_exclusive_group()
-    instrument_group.add_argument('-g', '--guitar', action='store_const', dest='instrument', const='EHGDAE',
+    instrument_group.add_argument('-g', '--guitar', action='store_const', dest='instrument', const='EBGDAE',
                                   help='use guitar tuning (default)')
     instrument_group.add_argument('-u', '--ukulele', action='store_const', dest='instrument', const='AECG',
                                   help='use ukulele tuning')
     instrument_group.add_argument('-i', '--instrument', type=str,
-                                  help='use custom instrument tuning (e.g., DADGAD)')
+                                  help='use custom instrument tuning, bottom-most string first - e.g. EHGDAE is guitar')
     parser.set_defaults(instrument='EHGDAE')
     args = parser.parse_args()
 
