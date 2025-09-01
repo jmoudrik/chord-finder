@@ -2,6 +2,7 @@
 
 A command-line Python tool that generates playable chord fingerings for fretted string instruments (e.g. guitar, ukulele) based on a given tuning.  
 Instead of exhaustively listing every possible shape, it uses heuristics to suggest fingerings that are ergonomic and practical to play.
+This makes it very flexible, allowing different tunings, instruments, and even custom finger counts (e.g. for players with only 3 fingers).
 
 ## Features
 - see `chords.py --help`  for usage & details
