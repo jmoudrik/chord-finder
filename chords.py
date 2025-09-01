@@ -558,6 +558,16 @@ def main():
                                   help='use guitar tuning (default)')
     instrument_group.add_argument('-u', '--ukulele', action='store_const', dest='instrument', const='GCEA',
                                   help='use ukulele tuning')
+    instrument_group.add_argument('-b', '--bass', action='store_const', dest='instrument', const='EADG',
+                                  help='use 4-string bass guitar tuning')
+    instrument_group.add_argument('-m', '--mandolin', action='store_const', dest='instrument', const='GDAE',
+                                  help='use mandolin tuning (GDAE, lowest to highest)')
+    instrument_group.add_argument('-c', '--charango', action='store_const', dest='instrument', const='GGCCEEAAEE',
+                                  help='use charango tuning')
+    instrument_group.add_argument('-l', '--lapsteel', action='store_const', dest='instrument', const='CEGACE',
+                                  help='use 6-string lap steel tuning (C6)')
+    instrument_group.add_argument('-d', '--dobro', action='store_const', dest='instrument', const='GBDGBD',
+                                  help='use dobro / resonator guitar tuning (Open G)')
     instrument_group.add_argument('-i', '--instrument', type=str,
                                   help='use custom instrument tuning, bottom-most string first - e.g. EADGBE is guitar, DADGBE is guitar Drop-D tuning')
 
