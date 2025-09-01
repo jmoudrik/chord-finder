@@ -1,4 +1,3 @@
-
 # edge goes from smaller to bigger
 def poset_to_edges(V, mycmp):
 	for v1 in V:
@@ -24,13 +23,22 @@ def reverse_edge_dict(ed):
 	return iterable_to_edge_dict(reverse_edges(iter_edges(ed)))
 
 def topological_sort(Graph):
-	V,E = Graph[0], Graph[1].copy()
+	"""
+	Sorts a graph topologically.
+
+	>>> topological_sort((range(1,5), dict([(1,set([2,3])),(2,set([4])),(3,set([4]))])))
+	[1, 2, 3, 4]
+	>>> topological_sort((range(1,8), iterable_to_edge_dict([(1,2),(1,3),(2,4),(3,4),(6,7)])))
+	[1, 5, 6, 2, 3, 7, 4]
+	>>> topological_sort((range(3), dict([(1,set([2])),(2,set([0])),(0,set([1]))])))
+	"""
+	V,E = list(Graph[0]), Graph[1].copy()
 
 	in_egde_count = {}
 	for v1, edges_out in E.items():
 		for v2 in edges_out:
 			in_egde_count[v2] = in_egde_count.get(v2,0) + 1
-	zero_in = [ v for v in V if v not in in_egde_count ]
+	zero_in = [v for v in V if v not in in_egde_count]
 
 	if len(zero_in) == 0:
 		return None
@@ -38,19 +46,18 @@ def topological_sort(Graph):
 	topo_order = []
 
 	while len(zero_in):
-		vz = zero_in[0]
-		del zero_in[0]
+		vz = zero_in.pop(0)
 		topo_order.append(vz)
 		edges_out_vz = E.get(vz, None)
 		if edges_out_vz != None:
-			for v_out_vz in edges_out_vz:
+			for v_out_vz in list(edges_out_vz):
 				in_egde_count[v_out_vz] -= 1
 				if in_egde_count[v_out_vz] == 0:
 					zero_in.append(v_out_vz)
-
+	if len(topo_order) != len(V):
+		return None
 	return topo_order
 
 if __name__ == "__main__":
-	print(topological_sort((range(1,5), dict([(1,set([2,3])),(2,set([4])),(3,set([4]))]))) )
-	print(topological_sort((range(1,7), iterable_to_edge_dict([(1,2),(1,3),(2,4),(3,4),(6,7)]))) )
-	print(topological_sort((range(3), dict([(1,set([2])),(2,set([0])),(0,set([1]))]))) )
+	import doctest
+	doctest.testmod()
