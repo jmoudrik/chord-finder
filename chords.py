@@ -539,56 +539,57 @@ class ChordGenerator:
 
 
 def main():
+    parser = argparse.ArgumentParser(description='Find guitar chords.')
+    parser.add_argument('chords', metavar='CHORD', type=str, nargs='+',
+                        help='a chord to find')
+    parser.add_argument('-n', '--number', type=int, default=3,
+                        help='number of chords to show')
+    instrument_group = parser.add_mutually_exclusive_group()
+    instrument_group.add_argument('-g', '--guitar', action='store_const', dest='instrument', const='EAHGHE',
+                                  help='use guitar tuning (default)')
+    instrument_group.add_argument('-u', '--ukulele', action='store_const', dest='instrument', const='GCEA',
+                                  help='use ukulele tuning')
+    instrument_group.add_argument('-i', '--instrument', type=str,
+                                  help='use custom instrument tuning (e.g., DADGAD)')
+    parser.set_defaults(instrument='EADGHE')
+    args = parser.parse_args()
+
     # cz
-	#base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',10),('H',11)]
-	base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('H',11)]
+    #base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',10),('H',11)]
+    base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('H',11)]
     # en
-	#base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',11)]
+    #base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',11)]
 
-	tone_modificators = [('#',1), ('b',-1), ('is',1), ('es', -1)]
-	chord_masks = [([''],(0,4,7)),(['mi','m'],(0,3,7)),(['5+','+','aug'],(0,4,8)),('sus4',(0,5,7)),(['6','sus6','add6'],(0,4,7,9)),
-					(['maj','maj7'],(0,4,7,11)),(['7'],(0,4,7,10)),(['m7', 'mi7'],(0,3,7,10)),(['dim','dim7'],(0,3,6,9)),
-					(['5b','5-'],(0,4,6)),(['mi6', 'm6','min6'],(0,3,7,9)), (['9'],(0,4,7,10,2))]
-	frequent_tones = ['C','D','E','F','G','A']
-	frequent_chords = frequent_tones + [ tone + "mi" for tone in frequent_tones ] + ["D7","Amaj","Dmaj","A7","E7","Em7"]
+    tone_modificators = [('#',1), ('b',-1), ('is',1), ('es', -1)]
+    chord_masks = [([''],(0,4,7)),(['mi','m'],(0,3,7)),(['5+','+','aug'],(0,4,8)),('sus4',(0,5,7)),(['6','sus6','add6'],(0,4,7,9)),
+                    (['maj','maj7'],(0,4,7,11)),(['7'],(0,4,7,10)),(['m7', 'mi7'],(0,3,7,10)),(['dim','dim7'],(0,3,6,9)),
+                    (['5b','5-'],(0,4,6)),(['mi6', 'm6','min6'],(0,3,7,9)), (['9'],(0,4,7,10,2))]
 
-	t = ToneSystem(12, base_tones, tone_modificators, chord_masks)
+    t = ToneSystem(12, base_tones, tone_modificators, chord_masks)
 
-	#	Guitar
-	#i = Instrument(('E','B','G','D','A','E'),t,8)
-	i = Instrument(('E','H','G','D','A','E'),t,8)
+    instrument_tuning = tuple(args.instrument.upper())
+    try:
+        i = Instrument(instrument_tuning, t, 8)
+    except Exception as e:
+        print(f"Error: Invalid instrument tuning '{args.instrument}'. Unknown tone in tuning.")
+        return
 
-    # Ukulele
-	i = Instrument(('A','E','C','G'),t,8)
-    # Balalajka
-	#i = Instrument(('G','E','E'),t,8)
-	c = ChordGenerator(i)
+    c = ChordGenerator(i)
 
-	#	Bass guitar
-	#i = Instrument(('G','D','A','E'),t,8)
-	#c = ChordGenerator(i, max_chord_span=1)
+    def find_chord(chords, num_to_show):
+        for chord in chords:
+            chngs = c.find_chords_clever(t.chordname_to_mask(chord), 3)
+            print(chord)
+            print()
+            if len(chngs):
+                for x in islice(chngs, num_to_show):
+                    print(x)
+                    print()
+            else:
+                print("NONE!!!!!!!!!!!!!")
+            #print("---------------------------")
 
-	def f():
-		chngs = [ c.find_chords_clever(t.chordname_to_mask(chord),2) for chord in frequent_chords ]
-		return chngs
-	#f()
-
-	def find_chord(chords):
-		for chord in chords:
-			chngs = c.find_chords_clever(t.chordname_to_mask(chord),3)
-			print(chord)
-			print()
-			if len(chngs):
-				for x in  chngs:
-					print(x)
-					print()
-			else:
-				print("NONE!!!!!!!!!!!!!")
-			print("---------------------------")
-
-	import sys
-
-	find_chord(sys.argv[1:])
+    find_chord(args.chords, args.number)
 
 if __name__ == '__main__':
 	main()
