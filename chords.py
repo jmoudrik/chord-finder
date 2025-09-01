@@ -546,31 +546,32 @@ class ChordGenerator:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Find guitar chords.')
+    parser = argparse.ArgumentParser(description='Find guitar chords. The program uses many heuristics to suggest fingerings that are ergonomic and most practical to play.')
     parser.add_argument('chords', metavar='CHORD', type=str, nargs='+',
                         help='a chord to find, e.g. C, C#m, Cmi, Cmi7, etc.')
     parser.add_argument('-n', '--number', type=int, default=3,
                         help='number of chords to show')
+    parser.add_argument('--fingers', type=int, default=4,
+                        help='number of available fingers')
     instrument_group = parser.add_mutually_exclusive_group()
-    instrument_group.add_argument('-g', '--guitar', action='store_const', dest='instrument', const='EBGDAE',
+    instrument_group.add_argument('-g', '--guitar', action='store_const', dest='instrument', const='EADGBE',
                                   help='use guitar tuning (default)')
-    instrument_group.add_argument('-u', '--ukulele', action='store_const', dest='instrument', const='AECG',
+    instrument_group.add_argument('-u', '--ukulele', action='store_const', dest='instrument', const='GCEA',
                                   help='use ukulele tuning')
     instrument_group.add_argument('-i', '--instrument', type=str,
-                                  help='use custom instrument tuning, bottom-most string first - e.g. EBGDAE is guitar')
+                                  help='use custom instrument tuning, bottom-most string first - e.g. EADGBE is guitar, DADGBE is guitar Drop-D tuning')
 
     lang_group = parser.add_mutually_exclusive_group()
     lang_group.add_argument('--en', action='store_const', dest='lang', const='en', help='Use English tone names (default)')
     lang_group.add_argument('--cz', action='store_const', dest='lang', const='cz', help='Use Czech tone names')
 
-    parser.set_defaults(instrument='EBGDAE', lang='en')
+    parser.set_defaults(instrument='EADGBE', lang='en')
     args = parser.parse_args()
 
     if args.lang == 'cz':
         # cz
         base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('H',11)]
-        if args.instrument == 'EBGDAE':
-            args.instrument = 'EHGDAE'
+        args.instrument = args.instrument.substitute('B','H')
     else:
         # en
         base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',11)]
@@ -582,14 +583,14 @@ def main():
 
     t = ToneSystem(12, base_tones, tone_modificators, chord_masks)
 
-    instrument_tuning = tuple(args.instrument.upper())
+    instrument_tuning = tuple(reversed(args.instrument.upper()))
     try:
         i = Instrument(instrument_tuning, t, 8)
     except ValueError as e:
         print(f"Error: {e}")
         return
 
-    c = ChordGenerator(i)
+    c = ChordGenerator(i, num_fingers=args.fingers)
 
     def find_chord(chords, num_to_show):
         for chord in chords:
