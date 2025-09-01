@@ -1,0 +1,586 @@
+#! /usr/bin/env python3
+
+import math
+import functools
+import warnings
+from itertools import islice, groupby, takewhile
+
+"""
+	Data-structures:
+		mask = Tuple containing the tones that are to be in a chord
+				e.g. all Major chords have mask (0, 4, 7)
+
+		class Chord
+
+
+"""
+
+class ToneSystem:
+	def __init__(self, scalesize, base_tones, modificators, chord_masks):
+		def unroll_lazy(l):
+			out=[]
+			for f,s in l:
+				if isinstance(f,list):
+					for ff in f:
+						out.append((ff,s))
+				else:
+					out.append((f,s))
+			return out
+		def get_dicts(list_of_pairs):
+			d = {}
+			d_inv = {}
+			for key, val in list_of_pairs:
+				# one key should have ONLY one val
+				if key in d:
+					assert d[key] == val
+				d[key] = val
+				# make inverse dict, if one value has more keys, take the first one
+				if val not in d_inv:
+					d_inv[val] = key
+			return d, d_inv
+		def fill_in_rest_of_t2l(t2l, d2m):
+			def nbhood():
+				for d in range(1, int(math.ceil(scalesize / 2.0))):
+					yield d
+					yield -d
+			rest = {}
+			for tone in filter(lambda x: x not in t2l, range(scalesize)):
+				for diff in nbhood():
+					try:
+						rest[tone] = t2l[(tone - diff)%scalesize] + d2m[diff]
+						break
+					except KeyError:
+						pass
+			return rest
+
+		self.scalesize = scalesize
+		self.l2t, self.t2l = get_dicts(unroll_lazy(base_tones))
+		self.m2d, self.d2m = get_dicts(unroll_lazy(modificators))
+		self.chsuff2mask, self.mask2chsuff = get_dicts(unroll_lazy(chord_masks))
+
+		# fills in labels using X from modif in firstround, ev XX in second, ...
+		while len(set(range(scalesize)) - set(self.t2l.keys())) > 0:
+			rest = fill_in_rest_of_t2l(self.t2l,self.d2m)
+			if len(rest) == 0:
+				warnings.warn("The given tonal system is not complete. With given modificators, it is not possible to name all the tones..")
+				break
+			self.t2l.update(rest)
+
+		self.init_parsing()
+
+	def init_parsing(self):
+		from pyparsing import CaselessLiteral, OneOrMore, Or, ZeroOrMore, Empty
+
+		def get_parsers_pairs(pa_fc, projdict):
+			return [ (CaselessLiteral(label) if len(label) > 0 else Empty()).setParseAction( pa_fc(val) )\
+												for label, val  in list(projdict.items()) ]
+
+		def num_tok(num):
+			def pa(st, locn, toks):
+				return num
+			return pa
+
+		def pa_sum(st, locn, toks):
+			return sum(toks) % self.scalesize
+
+		self.p_modi = OneOrMore(Or(get_parsers_pairs(num_tok, self.m2d)))
+		self.p_tone = Or(map( lambda x: (x + ZeroOrMore(self.p_modi)).setParseAction(pa_sum), get_parsers_pairs(num_tok, self.l2t)))
+		self.p_chord_modi = Or(get_parsers_pairs(num_tok, self.chsuff2mask))
+
+		def pach(st, locn, toks):
+			assert len(toks) == 2
+			return self.shift_mask(toks[0], toks[1])
+		self.p_chord = (self.p_tone + self.p_chord_modi).setParseAction(pach)
+
+	def tone_to_label(self, tone):
+		return self.t2l[tone % self.scalesize]
+	def label_to_tone(self, label):
+		toks = self.p_tone.parseString(label)
+		assert len(toks) == 1
+		return toks[0]
+	def map_mask(self, fc, mask):
+		return tuple(sorted(map(lambda x : fc(x) % self.scalesize, mask)))
+	def shift_mask(self, shift, mask):
+		return self.map_mask(lambda x : x + shift, mask)
+	def mask_to_base_n_chmask(self, mask):
+		for basetone in mask:
+			chmask = self.shift_mask( - basetone, mask)
+			if chmask in self.mask2chsuff:
+				yield basetone, chmask
+	def mask_to_chordname(self, mask):
+		basetone, chmask = next(self.mask_to_base_n_chmask(mask))
+		return self.tone_to_label(basetone) + self.mask2chsuff[chmask]
+	def chordname_to_mask(self, label):
+		toks = self.p_chord.parseString(label)
+		assert len(toks) == 1
+		return toks[0]
+	def test(t):
+		print(t.label_to_tone("Bbb"))
+		print(t.label_to_tone("Fisisis"))
+		print(t.label_to_tone("Gis"))
+
+		for ch in [ "Bismaj7", "Cmaj7", "Fisisissus6", "Gis5+" ]:
+			m = t.chordname_to_mask(ch)
+			ch2 = t.mask_to_chordname(m)
+			m2 = t.chordname_to_mask(ch2)
+			print(" -> ".join([str(x) for x in [ch,m,ch2,m2]]))
+
+		for bt,msk in t.mask_to_base_n_chmask((0,4,8)):
+			print(t.tone_to_label(bt),t.mask_to_chordname(msk))
+
+def ChordEvaluator():
+	EvalFcs=[]
+	def evalfc(f):
+		def g(chg):
+			ret = f(chg)
+			return ret if ret != None else 0
+		EvalFcs.append(g)
+		return g
+	def count_none(chg):
+		ch = sorted(chg.chord)
+		up, down = 0, 0
+		while up < len(ch) and ch[up][1] == None:
+			up += 1
+		while len(ch)-1-down >= 0  and ch[len(ch)-1-down][1] == None:
+			down += 1
+		middle = 0
+		i = up
+		state = 'no none'
+		while True:
+			i += 1
+			if i >= len(ch):
+				return up, middle, down
+			if state == 'no none' and ch[i][1] == None:
+				state = 'middle none'
+			if state == 'middle none' and ch[i][1] != None:
+				state = 'no none'
+				middle += 1
+
+	##
+	##    The more, the better
+	##
+	@evalfc
+	def finger_dist(chg):
+		fg2fr = chg.finger2fret
+		cnt = 0
+		for lower_finger in range(1,chg.num_fingers):
+			fr1, fr2 = fg2fr.get(lower_finger, None), fg2fr.get(lower_finger+1, None)
+			if fr1 != None and fr2 != None:
+				if fr1 > fr2:
+					assert False
+					cnt += 20
+				if fr2 - fr1 >= 2:
+					cnt += 4*(fr2-fr1)
+		return - cnt
+	@evalfc
+	def none_positions(chg):
+		up, middle, down = count_none(chg)
+		return - 8 * up - 20 * middle - 4 * down
+	@evalfc
+	def consecutive_strings_same_tone(chg):
+		def tone(string):
+			fr = chg.string2fret.get(string, None)
+			if fr == None:
+				return None
+			return chg.instrument.tone(string, fr)
+		cnt = 0
+		for lower_string in range(len(chg.instrument.strings)-1):
+			lw, up = tone(lower_string), tone(lower_string + 1)
+			if lw != None and up != None and lw == up:
+				chg.samestrings.append((lower_string, lower_string+1, lw))
+				cnt -= 4
+		return cnt
+	@evalfc
+	def how_much_do_fingers_hold(chg):
+		fg = chg.finger_hist
+		return -sum( 8*(len(fg[f]) if len(fg[f]) >= 2 else 0 ) for f in range(1,chg.num_fingers) )
+	@evalfc
+	def close_to_zero_fret(chg):
+		return - chg.minfret
+	@evalfc
+	def num_fingers(chg):
+		return - sum( ( 1 if len(strings) > 0 else 0 for strings in chg.finger_hist ) )
+	@evalfc
+	def span(chg):
+		# prefer chords with small width
+		return - chg.span
+	@evalfc
+	def no_pinky(chg):
+		# my pinky is not as fast as other fingers
+		return sum( ( -finger if (finger > 2 and len(strings) > 0) else 0 for finger,strings in enumerate(chg.finger_hist) ) )
+	@evalfc
+	def finger_diff(chg):
+		diff = 0
+		#diff_mapper
+		fh = chg.finger_hist
+		for f in range(chg.num_fingers-1):
+			if len(fh[f]) and len(fh[f+1]):
+				m1, m2 = max(fh[f]), max(fh[f+1])
+				df = abs(m1-m2)
+				if df > 2:
+					diff += df * 1 #max( (f-2,1) )
+
+		return - 1.2 * diff
+
+# 	TODO
+#	at se macka jednim prstem spis vsechny struny nez jen par vysokych (vysoke e)
+
+	def EVALUATOR(chg):
+		return [x(chg) for x in EvalFcs]
+
+	return EVALUATOR
+
+
+class ChordNGrip:
+	def __init__(self, chord, grip, instrument, num_fingers, evalfc):
+		self.chord = chord
+		self.string2fret = dict(chord)
+		self.grip = grip
+		self.string2finger = dict(grip)
+		self.instrument = instrument
+		self.num_fingers = num_fingers
+		self.basefret = min(self.filter_frets([None]))
+		self.samestrings =[]
+		# minfret
+		f = self.filter_frets([None,0])
+		if len(f) > 0:
+			self.minfret = min(f)
+		else:
+			self.minfret = 0
+		# maxfret
+		self.maxfret = max(self.filter_frets([None]))
+		# finger hist
+		self.finger2fret = {}
+		self.finger_hist= [[] for _ in range(self.num_fingers)]
+		for string, finger in self.grip:
+			if finger != None:
+				self.finger_hist[finger-1].append(string)
+				self.finger2fret[finger] = self.string2fret[string]
+
+		# chord span
+		self.span = self.maxfret - self.minfret
+
+		# fitness
+		self.fitvals = evalfc(self)
+		self.fitness = sum(self.fitvals)
+	def __cmp__(self, other):
+		if isinstance(other, ChordNGrip):
+			return cmp(self.fitness, other.fitness)
+		else:
+			return cmp(id(self), id(other))
+	def __hash__(self):
+		return hash((self.chord, self.grip))
+	def filter_frets(self, filterset):
+		return [x[1] for x in [x for x in self.chord if x[1] not in filterset]]
+	def str_rich(self):
+		l=[("string-fret",self.chord), ("grip",self.grip), ("samestrings",self.samestrings),
+			("fitvals",self.fitvals), ("fitness",self.fitness)]
+		return '\n'.join([tag + ": " + str(val) for tag, val in l] + ["chord:",str(self)])
+	def __str__(self):
+		chord, grip = self.chord, self.grip
+		str_fret, str_grip = self.string2fret, self.string2finger
+		minfret,maxfret = self.minfret, self.maxfret
+		longest_string_name = max( map( lambda x : len(x), self.instrument.string_names) )
+		lines=[]
+		if minfret >= 3:
+			lines.append(" "*(longest_string_name+3) + str(minfret))
+		else:
+			minfret = 1
+		for num,string in enumerate(self.instrument.string_names):
+			l = string + " "*(longest_string_name - len(string) +1) + "|"
+			grp_str = "-"
+			if str_grip[num] != None:
+				grp_str = "%d"%(str_grip[num],)
+
+			if str_fret[num] not in [None,0]:
+				l += "---|"*(str_fret[num] - minfret) + "-%s-|"%(grp_str,) + "---|" * (maxfret-str_fret[num])
+			else:
+				l += "---|" * (maxfret - minfret + 1) + (" x" if str_fret[num] == None else ('' if minfret == 1 else ' o'))
+
+			lines.append(l)
+		return '\n'.join(lines)
+
+class Instrument:
+	def __init__(self, strings, tone_system, num_frets):
+		'''
+		strings is a tuple, from the bottommost,
+			e.g. for a guitar
+			strings = ('E','H','G','D','A','E')
+			e.g. for a bass guitar
+			strings = ('G','D','A','E')
+		'''
+		self.ts = tone_system
+		self.string_names = strings
+		self.strings = tuple(map(tone_system.label_to_tone, strings))
+		self.num_frets = num_frets
+	def get_fretboard(self):
+		return [ set((fr,(zerofret + fr) % self.ts.scalesize) for fr in range(self.num_frets + 1)) for zerofret in self.strings]
+	def tone(self, string, fret):
+		if fret == None:
+			fret = 0
+		return (self.strings[string] + fret) % self.ts.scalesize
+
+class ChordGenerator:
+	def __init__(self, instrument, max_chord_span=2,num_fingers=4):
+		self.instrument = instrument
+		self.max_chord_span = max_chord_span
+		self.num_fingers = num_fingers
+		self.EVAL = ChordEvaluator()
+	def search_what_to_press(self, mask):
+		def filter_fretboard_by_chordmask(fretboard, mask):
+			return [ set(filter(lambda pair: pair[1] in mask, st)) for st in fretboard ]
+		# filter out tones that are not in chord
+		fretboard = filter_fretboard_by_chordmask(self.instrument.get_fretboard(), mask )
+
+		def dfs(chords_res, rest_of_tones, chordsofar=(), chordspan=(self.instrument.num_frets, 0), string=0):
+			if string >= len(self.instrument.strings):
+				if len(rest_of_tones) == 0:
+					chords_res.append(chordsofar)
+				return
+			for fret, tone in fretboard[string] | set(((None,None),)):
+				minfret, maxfret = chordspan
+				# we want such chords that do not span across more then 3 (or self.max_chord_span) frets
+				# no one has hand that wide... :-)
+				if fret:
+					if fret > minfret and fret - minfret > self.max_chord_span: continue
+					if fret < maxfret and maxfret - fret > self.max_chord_span: continue
+					if fret < minfret: minfret = fret
+					if fret > maxfret: maxfret = fret
+				responsible=set((tone,)) & rest_of_tones
+				rest_of_tones -= responsible
+				dfs(chords_res, rest_of_tones, chordsofar + ((string,fret),), (minfret, maxfret), string+1)
+				rest_of_tones |= responsible
+
+		chords_res = []
+		rest_of_tones = set(mask)
+		# find all possible "chords"
+		dfs(chords_res, rest_of_tones)
+
+		return chords_res
+	def find_grips(self, chord):
+		none_strings = list([x for x in chord if x[1] == None])
+		chord = [x for x in chord if x[1] != None]
+		def sweep_cmp(x,y):
+			str1, fr1 = x
+			str2, fr2 = y
+			if fr1 != fr2:
+				return cmp(fr1,fr2)
+			return - cmp(str1,str2)
+		def myprint(depth, *arg):
+			pass
+			#print ' '.join(["|"*depth] + arg)
+		def search_grips(result_stack, index, assignment, sweepline, free_fingers, depth=0):
+			myprint( depth, "fingers:", free_fingers)
+			if index >= len(sweepline):
+				result_stack.append(tuple(sorted(assignment+none_strings)))
+				myprint( depth, "save res", result_stack[-1], ", fallback")
+				return
+			if free_fingers <= 0:
+				myprint( depth, "fallback")
+				return
+			this_finger = self.num_fingers - free_fingers + 1
+			this_string, this_fret = sweepline[index]
+
+			# if we can try bare (and it is meaningful)
+			max_index_on_this_fret = index
+			while (max_index_on_this_fret + 1) < len(sweepline) and sweepline[max_index_on_this_fret+1][1] == this_fret:
+				max_index_on_this_fret += 1
+			if max_index_on_this_fret > index and not any(map(lambda p: (p[0] < this_string) and (p[1] < this_fret), sweepline)):
+				assindex = len(assignment)
+				for string, fret in sweepline[index : max_index_on_this_fret + 1]:
+					assignment.append((string, this_finger))
+				myprint( depth, "bare")
+				search_grips(result_stack, max_index_on_this_fret + 1, assignment, sweepline, free_fingers - 1, depth+1)
+				myprint( depth, "bare back")
+				del assignment[assindex:]
+
+			'''
+# TODO - make a better distinction between this and bare
+			# if we can try pressing more consecutive strings with a single finger
+			max_consecutive_index = index
+			while (max_consecutive_index + 1) < len(sweepline):
+				next_string, next_fret = sweepline[max_consecutive_index+1]
+				if next_fret != this_fret:
+					break
+				if next_string != this_string - 1:
+					break
+				max_consecutive_index += 1
+			if max_consecutive_index > index:
+				assindex = len(assignment)
+				for string, fret in sweepline[index : max_consecutive_index + 1]:
+					assignment.append((string, this_finger))
+				myprint( depth, "consecutive")
+				search_grips(result_stack, max_consecutive_index + 1, assignment, sweepline, free_fingers - 1, depth +1)
+				myprint( depth, "consecutive back")
+				del assignment[assindex:]
+			'''
+
+			# normal pressing
+			assindex = len(assignment)
+			assignment.append((this_string, this_finger))
+			myprint( depth, "normal")
+			search_grips(result_stack, index + 1, assignment, sweepline, free_fingers - 1, depth+1)
+			myprint( depth, "normal back")
+			del assignment[assindex:]
+
+			# try to skip some fingers
+			myprint( depth, "skip")
+			search_grips(result_stack, index, assignment, sweepline, free_fingers - 1, depth+1)
+			myprint( depth, "skipback")
+
+		sweepline = sorted(chord, key=functools.cmp_to_key(sweep_cmp))
+		index = 0
+		assignment = []
+		# assing the zero fret
+		while index < len(sweepline) and sweepline[index][1] == 0:
+			assignment.append((sweepline[index][0], None))
+			index += 1
+
+		free_fingers = self.num_fingers
+		result_stack = []
+		# search for all possible grips of other strings & frets
+		search_grips(result_stack, index, assignment, sweepline, free_fingers)
+
+		return result_stack
+	def evaluator(self, ch_n_g):
+		return self.EVAL(ch_n_g)
+	def shrink_head(self, head, fitness_limit):
+		if len(head) == 0:
+			return []
+		limit =	head[0].fitness * fitness_limit
+		return list(takewhile(lambda x: x.fitness >= limit, head))
+	def find_chords(self, mask, fitness_limit=2):
+		what_to_press = self.search_what_to_press(mask)
+		head = [ ChordNGrip(ch, grip, self.instrument, self.num_fingers, self.evaluator)
+						for ch in what_to_press for grip in self.find_grips(ch) ]
+		head.sort(reverse=True)
+
+		return self.shrink_head(head, fitness_limit)
+	def find_chords_clever(self, mask, fitness_limit=2):
+		what_to_press = self.search_what_to_press(mask)
+		if len(what_to_press) == 0:
+			return []
+
+		# which what_to_press are subset of each other:
+		# e.g. A=(2, None, None, 3, 2, 2) is a "subset" of B
+		#      B=(2,    3,    3, 3, 2, 2) but A is NOT subset of C
+		#      C=(4,    3,    3, 4, 2, 2)
+		def chord_cmp(ch1, ch2):
+			filter_nn = lambda ch : set((s,f) for s, f in ch if f != None)
+			# returns 	1  if ch1 > ch2 ( ch2 is a (strict) subset of ch1 )
+			s1_nn, s2_nn = filter_nn(ch1), filter_nn(ch2)
+			#if s1_nn == s2_nn:
+			#	print ch1, ch2
+			#assert s1_nn != s2_nn
+			return s1_nn > s2_nn
+		'''j
+		filter_nn = lambda ch : set((s,f) for s, f in ch if f != None)
+		def chord_cmp(ch1, ch2, cache={}):
+			# returns 	1  if ch1 > ch2 ( ch2 is a (strict) subset of ch1 )
+			#if s1_nn == s2_nn:
+			#	print ch1, ch2
+			#assert s1_nn != s2_nn
+			s1 = cache.get(ch1, None)
+			s2 = cache.get(ch2, None)
+			if not s1:
+				s1 = filter_nn(ch1)
+				cache[ch1] = s1
+			if not s2:
+				s2 = filter_nn(ch2)
+				cache[ch2] = s2
+			return ( s1 > s2 )
+		'''
+
+		from topological_sort import poset_to_edges, iterable_to_edge_dict, iter_edges, reverse_edge_dict, topological_sort
+
+		V = what_to_press
+		E = iterable_to_edge_dict(poset_to_edges(V, chord_cmp))
+		rev_E = reverse_edge_dict(E)
+		topo_V = topological_sort((V,E))
+
+		ch_best_chng = {}
+		for ch in what_to_press:
+			grips = self.find_grips(ch)
+			if len(grips) > 0:
+				ch_best_chng[ch] =  max( ChordNGrip(ch, grip, self.instrument, self.num_fingers, self.evaluator) for grip in grips )
+
+		dead_chs = set()
+
+		for ch in topo_V:
+			my_best = ch_best_chng.get(ch,None)
+			if my_best != None:
+				my_parents = E.get(ch, ())
+				for parent in my_parents:
+					par_best = ch_best_chng.get(parent,None)
+					if par_best == None or par_best < my_best:
+						# this means that `parent' is becoming son of all my parents
+						ch_best_chng[parent] = my_best
+					if par_best != None and par_best > my_best:
+						dead_chs.add(my_best)
+
+		head = []
+		for ch in V:
+			if len(E.get(ch,())) == 0:
+				chng = ch_best_chng.get(ch,None)
+				if chng != None and not chng in dead_chs:
+					head.append(chng)
+
+		head = [k for k, g in groupby(sorted(head,reverse=True))]
+
+		return self.shrink_head(head, fitness_limit)
+
+
+def main():
+    # cz
+	#base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',10),('H',11)]
+	base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('H',11)]
+    # en
+	#base_tones = [('C',0),('D',2),('E',4),('F',5),('G',7),('A',9),('B',11)]
+
+	tone_modificators = [('#',1), ('b',-1), ('is',1), ('es', -1)]
+	chord_masks = [([''],(0,4,7)),(['mi','m'],(0,3,7)),(['5+','+','aug'],(0,4,8)),('sus4',(0,5,7)),(['6','sus6','add6'],(0,4,7,9)),
+					(['maj','maj7'],(0,4,7,11)),(['7'],(0,4,7,10)),(['m7', 'mi7'],(0,3,7,10)),(['dim','dim7'],(0,3,6,9)),
+					(['5b','5-'],(0,4,6)),(['mi6', 'm6','min6'],(0,3,7,9)), (['9'],(0,4,7,10,2))]
+	frequent_tones = ['C','D','E','F','G','A']
+	frequent_chords = frequent_tones + [ tone + "mi" for tone in frequent_tones ] + ["D7","Amaj","Dmaj","A7","E7","Em7"]
+
+	t = ToneSystem(12, base_tones, tone_modificators, chord_masks)
+
+	#	Guitar
+	#i = Instrument(('E','B','G','D','A','E'),t,8)
+	i = Instrument(('E','H','G','D','A','E'),t,8)
+
+    # Ukulele
+	#i = Instrument(('A','E','C','G'),t,8)
+    # Balalajka
+	#i = Instrument(('G','E','E'),t,8)
+	c = ChordGenerator(i)
+
+	#	Bass guitar
+	#i = Instrument(('G','D','A','E'),t,8)
+	#c = ChordGenerator(i, max_chord_span=1)
+
+	def f():
+		chngs = [ c.find_chords_clever(t.chordname_to_mask(chord),2) for chord in frequent_chords ]
+		return chngs
+	#f()
+
+	def find_chord(chords):
+		for chord in chords:
+			chngs = c.find_chords_clever(t.chordname_to_mask(chord),3)
+			print(chord)
+			print()
+			if len(chngs):
+				for x in  chngs:
+					print(x)
+					print()
+			else:
+				print("NONE!!!!!!!!!!!!!")
+			print("---------------------------")
+
+	import sys
+
+	find_chord(sys.argv[1:])
+
+if __name__ == '__main__':
+	main()
