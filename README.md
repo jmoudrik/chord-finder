@@ -14,9 +14,12 @@ This makes it very flexible, allowing different tunings, instruments, and even c
 
 ## Usage
 ```
-usage: chords.py [-h] [-n NUMBER] [--fingers FINGERS] [-g | -u | -b | -m | -c | -l | -d | -i INSTRUMENT] [--en | --cz] CHORD [CHORD ...]
+usage: chords.py [-h] [-n NUMBER] [--fingers FINGERS] \
+                 [-g | -u | -b | -m | -c | -l | -d | -i INSTRUMENT] \
+                 [--en | --cz] CHORD [CHORD ...]
 
-Find guitar chords. The program uses many heuristics to suggest fingerings that are ergonomic and most practical to play.
+Find guitar chords. The program uses many heuristics to suggest fingerings
+that are ergonomic and most practical to play.
 
 positional arguments:
   CHORD                 a chord to find, e.g. C, C#m, Cmi, Cmi7, etc.
@@ -34,7 +37,8 @@ optional arguments:
   -l, --lapsteel        use 6-string lap steel tuning (C6)
   -d, --dobro           use dobro / resonator guitar tuning (Open G)
   -i INSTRUMENT, --instrument INSTRUMENT
-                        use custom instrument tuning, bottom-most string first - e.g. EADGBE is guitar, DADGBE is guitar Drop-D tuning
+                        use custom instrument tuning, bottom-most string first
+                        - e.g. EADGBE is guitar, DADGBE is guitar Drop-D tuning
   --en                  Use English tone names (default)
   --cz                  Use Czech tone names
 ```
